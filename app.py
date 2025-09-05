@@ -1,102 +1,129 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for, send_file
 from werkzeug.utils import secure_filename
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet
 
-# --- Setup ---
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///employees.db"
-app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
-app.config["SECRET_KEY"] = "supersecret"
 
-db = SQLAlchemy(app)
+# Upload folder
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# --- Model ---
-class Employee(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120))
-    age = db.Column(db.Integer)
-    qualification = db.Column(db.String(120))
-    salary = db.Column(db.String(50))
-    logo = db.Column(db.String(200))  # relative path like uploads/filename.png
+# In-memory storage
+employees = {}
+emp_id_counter = 1
 
 
-# --- Routes ---
 @app.route("/", methods=["GET"])
 def index():
+    header_layout = request.args.get("header_layout", "center")
+    logo_layout = request.args.get("logo_layout", "center")
     layout = request.args.get("layout", "ltr")
-    employees = Employee.query.all()
-    return render_template("template.html", layout=layout, employees=employees)
 
-
-@app.route("/add", methods=["POST"])
-def add():
-    name = request.form.get("name")
-    age = request.form.get("age")
-    qualification = request.form.get("qualification")
-    salary = request.form.get("salary")
-
-    logo_path = None
-    if "logo" in request.files:
-        logo = request.files["logo"]
-        if logo and logo.filename != "":
-            filename = secure_filename(logo.filename)
-            upload_dir = app.config["UPLOAD_FOLDER"]
-            os.makedirs(upload_dir, exist_ok=True)
-            filepath = os.path.join(upload_dir, filename)
-            logo.save(filepath)
-            logo_path = f"uploads/{filename}"  # store relative path
-
-    new_employee = Employee(
-        name=name,
-        age=age,
-        qualification=qualification,
-        salary=salary,
-        logo=logo_path
+    return render_template(
+        "template.html",
+        employees=employees.values(),
+        header_layout=header_layout,
+        logo_layout=logo_layout,
+        layout=layout,
     )
-    db.session.add(new_employee)
-    db.session.commit()
 
-    current_layout = request.form.get("current_layout", "ltr")
-    return redirect(url_for("index", layout=current_layout))
+
+@app.route("/add_employee", methods=["POST"])
+def add_employee():
+    global emp_id_counter
+    name = request.form["name"]
+    age = request.form["age"]
+    qualification = request.form["qualification"]
+    salary = request.form["salary"]
+
+    file = request.files.get("logo")
+    photo_filename = None
+    if file and file.filename != "":
+        filename = secure_filename(file.filename)
+        photo_filename = f"{emp_id_counter}_{filename}"
+        file.save(os.path.join(app.config["UPLOAD_FOLDER"], photo_filename))
+
+    employees[emp_id_counter] = {
+        "id": emp_id_counter,
+        "name": name,
+        "age": age,
+        "qualification": qualification,
+        "salary": salary,
+        "photo": f"uploads/{photo_filename}" if photo_filename else None,
+    }
+    emp_id_counter += 1
+    return redirect(url_for("index"))
 
 
 @app.route("/edit/<int:emp_id>", methods=["POST"])
 def edit(emp_id):
-    employee = Employee.query.get_or_404(emp_id)
+    if emp_id not in employees:
+        return "Employee not found", 404
 
-    employee.name = request.form.get("name")
-    employee.age = request.form.get("age")
-    employee.qualification = request.form.get("qualification")
-    employee.salary = request.form.get("salary")
+    name = request.form["name"]
+    age = request.form["age"]
+    qualification = request.form["qualification"]
+    salary = request.form["salary"]
 
-    if "logo" in request.files:
-        logo = request.files["logo"]
-        if logo and logo.filename != "":
-            filename = secure_filename(logo.filename)
-            upload_dir = app.config["UPLOAD_FOLDER"]
-            os.makedirs(upload_dir, exist_ok=True)
-            filepath = os.path.join(upload_dir, filename)
-            logo.save(filepath)
-            employee.logo = f"uploads/{filename}"
+    file = request.files.get("logo")
+    if file and file.filename != "":
+        filename = secure_filename(file.filename)
+        photo_filename = f"{emp_id}_{filename}"
+        file.save(os.path.join(app.config["UPLOAD_FOLDER"], photo_filename))
+        employees[emp_id]["photo"] = f"uploads/{photo_filename}"
 
-    db.session.commit()
+    employees[emp_id].update({
+        "name": name,
+        "age": age,
+        "qualification": qualification,
+        "salary": salary,
+    })
 
-    current_layout = request.form.get("current_layout", "ltr")
-    return redirect(url_for("index", layout=current_layout))
+    return redirect(url_for("index"))
 
 
 @app.route("/delete/<int:emp_id>", methods=["POST"])
 def delete(emp_id):
-    employee = Employee.query.get_or_404(emp_id)
-    db.session.delete(employee)
-    db.session.commit()
-    current_layout = request.form.get("current_layout", "ltr")
-    return redirect(url_for("index", layout=current_layout))
+    if emp_id in employees:
+        employees.pop(emp_id)
+    return redirect(url_for("index"))
 
 
-# --- Run ---
+@app.route("/employee_pdf/<int:emp_id>")
+def employee_pdf(emp_id):
+    if emp_id not in employees:
+        return "Employee not found", 404
+
+    emp = employees[emp_id]
+    pdf_filename = f"employee_{emp_id}.pdf"
+    pdf_path = os.path.join("static", pdf_filename)
+
+    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Add image FIRST
+    if emp["photo"]:
+        image_path = os.path.join("static", emp["photo"])
+        if os.path.exists(image_path):
+            story.append(Image(image_path, width=200, height=200))
+            story.append(Spacer(1, 20))
+
+    # Add details
+    story.append(Paragraph("<b>Employee Details</b>", styles["Title"]))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Name: {emp['name']}", styles["Normal"]))
+    story.append(Paragraph(f"Age: {emp['age']}", styles["Normal"]))
+    story.append(Paragraph(f"Qualification: {emp['qualification']}", styles["Normal"]))
+    story.append(Paragraph(f"Salary: {emp['salary']}", styles["Normal"]))
+
+    doc.build(story)
+    return send_file(pdf_path, as_attachment=True)
+
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
