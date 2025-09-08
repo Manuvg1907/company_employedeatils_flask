@@ -5,10 +5,10 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 
-app = Flask(__name__)
+app = Flask(_name_)
 
 # Upload folder
-UPLOAD_FOLDER = "static/uploads"
+UPLOAD_FOLDER = os.path.join("static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -39,13 +39,15 @@ def add_employee():
     age = request.form["age"]
     qualification = request.form["qualification"]
     salary = request.form["salary"]
+    alignment = request.form.get("alignment", "center")
 
     file = request.files.get("logo")
     photo_filename = None
     if file and file.filename != "":
         filename = secure_filename(file.filename)
-        photo_filename = f"{emp_id_counter}_{filename}"
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], photo_filename))
+        save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(save_path)
+        photo_filename = f"uploads/{filename}"  # relative path for static/
 
     employees[emp_id_counter] = {
         "id": emp_id_counter,
@@ -53,7 +55,8 @@ def add_employee():
         "age": age,
         "qualification": qualification,
         "salary": salary,
-        "photo": f"uploads/{photo_filename}" if photo_filename else None,
+        "photo": photo_filename,
+        "align": alignment,
     }
     emp_id_counter += 1
     return redirect(url_for("index"))
@@ -68,19 +71,21 @@ def edit(emp_id):
     age = request.form["age"]
     qualification = request.form["qualification"]
     salary = request.form["salary"]
+    alignment = request.form.get("alignment", employees[emp_id].get("align", "center"))
 
     file = request.files.get("logo")
     if file and file.filename != "":
         filename = secure_filename(file.filename)
-        photo_filename = f"{emp_id}_{filename}"
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], photo_filename))
-        employees[emp_id]["photo"] = f"uploads/{photo_filename}"
+        save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(save_path)
+        employees[emp_id]["photo"] = f"uploads/{filename}"
 
     employees[emp_id].update({
         "name": name,
         "age": age,
         "qualification": qualification,
         "salary": salary,
+        "align": alignment,
     })
 
     return redirect(url_for("index"))
@@ -106,14 +111,16 @@ def employee_pdf(emp_id):
     styles = getSampleStyleSheet()
     story = []
 
-    # Add image FIRST
-    if emp["photo"]:
+    # Add employee image with alignment
+    if emp.get("photo"):
         image_path = os.path.join("static", emp["photo"])
         if os.path.exists(image_path):
-            story.append(Image(image_path, width=200, height=200))
+            img = Image(image_path, width=200, height=200)
+            img.hAlign = emp.get("align", "center").upper()
+            story.append(img)
             story.append(Spacer(1, 20))
 
-    # Add details
+    # Employee details
     story.append(Paragraph("<b>Employee Details</b>", styles["Title"]))
     story.append(Spacer(1, 12))
     story.append(Paragraph(f"Name: {emp['name']}", styles["Normal"]))
@@ -125,5 +132,5 @@ def employee_pdf(emp_id):
     return send_file(pdf_path, as_attachment=True)
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     app.run(debug=True)
