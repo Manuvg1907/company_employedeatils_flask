@@ -13,8 +13,6 @@
     .logo-left { display: flex; justify-content: flex-start; }
     .logo-center { display: flex; justify-content: center; }
     .logo-right { display: flex; justify-content: flex-end; }
-    .logo-top { display: flex; flex-direction: column; align-items: center; }
-    .logo-bottom { display: flex; flex-direction: column-reverse; align-items: center; }
 
     .layout-ltr { display: flex; flex-wrap: wrap; justify-content: flex-start; }
     .layout-rtl { display: flex; flex-wrap: wrap; justify-content: flex-end; flex-direction: row-reverse; }
@@ -41,14 +39,6 @@
             <option value="right" {% if header_layout == 'right' %}selected{% endif %}>Header Right</option>
           </select>
 
-          <select name="logo_layout" class="form-select me-2">
-            <option value="left" {% if logo_layout == 'left' %}selected{% endif %}>Image Left</option>
-            <option value="center" {% if logo_layout == 'center' %}selected{% endif %}>Image Center</option>
-            <option value="right" {% if logo_layout == 'right' %}selected{% endif %}>Image Right</option>
-            <option value="top" {% if logo_layout == 'top' %}selected{% endif %}>Image Top</option>
-            <option value="bottom" {% if logo_layout == 'bottom' %}selected{% endif %}>Image Bottom</option>
-          </select>
-
           <select name="layout" class="form-select me-2">
             <option value="ltr" {% if layout == 'ltr' %}selected{% endif %}>Employees Left → Right</option>
             <option value="rtl" {% if layout == 'rtl' %}selected{% endif %}>Employees Right → Left</option>
@@ -66,7 +56,7 @@
       {% for employee in employees %}
       <div class="card template-card" style="width: 18rem;">
         {% if employee.photo %}
-        <div class="{{ 'logo-' + logo_layout }}">
+        <div class="logo-{{ employee.align }}">
           <img src="{{ url_for('static', filename=employee.photo) }}" class="card-img-top logo" alt="Employee Photo">
         </div>
         {% endif %}
@@ -119,6 +109,14 @@
                 <label class="form-label">Image</label>
                 <input type="file" class="form-control" name="logo" accept="image/*">
               </div>
+              <div class="mb-2">
+                <label class="form-label">Image Alignment</label>
+                <select class="form-select" name="alignment">
+                  <option value="left" {% if employee.align == 'left' %}selected{% endif %}>Left</option>
+                  <option value="center" {% if employee.align == 'center' %}selected{% endif %}>Center</option>
+                  <option value="right" {% if employee.align == 'right' %}selected{% endif %}>Right</option>
+                </select>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="btn btn-primary">Save</button>
@@ -138,6 +136,14 @@
         <div class="mb-2"><input class="form-control" name="qualification" placeholder="Qualification"></div>
         <div class="mb-2"><input class="form-control" name="salary" placeholder="Salary"></div>
         <div class="mb-2"><input class="form-control" type="file" name="logo"></div>
+        <div class="mb-2">
+          <label class="form-label">Image Alignment</label>
+          <select class="form-select" name="alignment">
+            <option value="left">Left</option>
+            <option value="center" selected>Center</option>
+            <option value="right">Right</option>
+          </select>
+        </div>
         <button class="btn btn-success">Add</button>
       </form>
     </div>
